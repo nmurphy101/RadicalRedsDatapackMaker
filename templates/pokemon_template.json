@@ -1,0 +1,28 @@
+{
+  "species": "{{POKEMON_NAME}}",
+  "gender": "{{POKEMON_GENDER}}",
+  "level": "{{POKEMON_LEVEL}}",
+  "aspects": "{{POKEMON_ASPECT_LIST}}",
+  "nature": "{{POKEMON_NATURE}}",
+  "ability": "{{POKEMON_ABILITY}}",
+  "moveset": "{{POKEMON_MOVESET_LIST}}",
+  "ivs": {
+    "hp": "{{POKEMON_IV_HP}}",
+    "atk": "{{POKEMON_IV_ATK}}",
+    "def": "{{POKEMON_IV_DEF}}",
+    "spa": "{{POKEMON_IV_SPA}}",
+    "spd": "{{POKEMON_IV_SPD}}",
+    "spe": "{{POKEMON_IV_SPE}}"
+  },
+  "evs": {
+    "hp": "{{POKEMON_EV_HP}}",
+    "atk": "{{POKEMON_EV_ATK}}",
+    "spa": "{{POKEMON_EV_SPA}}",
+    "def": "{{POKEMON_EV_DEF}}",
+    "spd": "{{POKEMON_EV_SPD}}",
+    "spe": "{{POKEMON_EV_SPE}}"
+  },
+  "heldItem": [
+    "{{POKEMON_HELD_ITEM}}"
+  ]
+}

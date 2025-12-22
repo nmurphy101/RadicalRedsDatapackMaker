@@ -1,0 +1,14 @@
+{
+  "name": "{{LEADER_NAME}}",
+  "ai": {
+    "type": "rct",
+    "data": {
+      "maxSelectMargin": 0.15
+    }
+  },
+  "battleFormat": "{{BATTLE_FORMAT}}",
+  "battleRules": {
+    "maxItemUses": 0
+  },
+  "team": "{{POKEMON_TEAM_LIST}}"
+}
