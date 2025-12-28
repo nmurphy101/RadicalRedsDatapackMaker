@@ -17,7 +17,7 @@
   "criteria": {
     "first_defeat": {
       "conditions": {
-        "trainer_ids": ["chickencoopleader_{{LEADER_NAME}}"]
+        "trainer_ids": ["chickencoopleader_{{LEADER_NAME}}_{{BADGE_LEVEL}}"]
       },
       "trigger": "rctmod:defeat_count"
     }

@@ -1,5 +1,5 @@
 {
-  "requiredDefeats": [],
+  "requiredDefeats": "{{REQUIRED_DEFEATS}}",
     "series": [
       "chickencoopgymchallenge"
     ],

@@ -1,4 +1,5 @@
 import math
+import shutil
 import pandas as pd
 import json
 import os
@@ -183,6 +184,7 @@ def main(
         output_dir="output_jsons",
         leader_template_path="templates/gym_leader_template.json",
         pokemon_template_path="templates/pokemon_template.json",
+        leader_names=[],
 ):
     # Validate input file
     if not os.path.isfile(excel_file):
@@ -200,16 +202,29 @@ def main(
     with open(leader_template_path, "r", encoding="utf-8") as tf:
         gym_template_obj = json.load(tf)
 
+    # Pokemon template JSON creation
     pokemon_template_obj = None
     if os.path.isfile(pokemon_template_path):
         with open(pokemon_template_path, "r", encoding="utf-8") as pf:
             pokemon_template_obj = json.load(pf)
 
+    # Advancement trainer JSON creation
     advancement_template_obj = None
     advancement_template_filename = "templates/advancement_trainer_template.json"
     if os.path.isfile(advancement_template_filename):
         with open(advancement_template_filename, "r", encoding="utf-8") as af:
             advancement_template_obj = json.load(af)
+
+    # Mob trainer group JSON creation
+    mobs_dir = f"{output_dir}/mobs/trainers/groups"
+    os.makedirs(mobs_dir, exist_ok=True)
+
+    mobs_template_obj = None
+    if os.path.isfile(args.mobs_template):
+        with open(args.mobs_template, "r", encoding="utf-8") as mf:
+            mobs_template_obj = json.load(mf)
+
+        # print(f"Successfully created mob trainer group JSON file in the '{mobs_dir}' directory.", end="\r")
 
     # Load the Excel file into a pandas DataFrame
     df = pd.read_excel(excel_file, sheet_name=sheet_name)
@@ -232,16 +247,15 @@ def main(
             first = group.iloc[0]
             group_map = dict(first.to_dict())
             leader_name = (first.get('Leader Name') or first.get('Leader', '')).lower().strip()
-            group_map['LEADER_NAME'] = f"{leader_name[0].upper()}{leader_name[1:]}" if leader_name else f"leader_{badge_level}"
-
-            # filename: prefer provided LEADER_NAME
-            base_name = group_map.get("LEADER_NAME")
+            group_map['LEADER_NAME'] = f"{leader_name}" if leader_name else f"leader_{badge_level}"
+            group_map['LEADER_DISPLAY_NAME'] = f"{leader_name[0].upper()}{leader_name[1:]}" if leader_name else f"leader_{badge_level}"
+            group_map['BADGE_LEVEL'] = badge_level
 
             # ignore groups without a leader name
-            if "Leader Name" in base_name:
+            if "leader name" in leader_name:
                 continue
 
-            safe = re.sub(r"[^A-Za-z0-9._-]+", "_", str(base_name)).strip("_")
+            safe = re.sub(r"[^A-Za-z0-9._-]+", "_", str(leader_name)).strip("_")
 
             # Battle format from "Format" column if present
             if "BATTLE_FORMAT" not in group_map or not group_map.get("BATTLE_FORMAT"):
@@ -256,7 +270,7 @@ def main(
                     pokemon_list.append(p)
 
             rendered_obj = _render_node(gym_template_obj, group_map, pokemon_list)
-            filename = os.path.join(trainers_dir, f"chickencoopleader_{safe}.json")
+            filename = os.path.join(trainers_dir, f"chickencoopleader_{safe}_{badge_level}.json")
             with open(filename, "w", encoding="utf-8") as f:
                 json.dump(rendered_obj, f, indent=2, ensure_ascii=False)
 
@@ -265,12 +279,22 @@ def main(
                 advancement_obj = _render_node(advancement_template_obj, group_map)
                 advancement_dir = f"{output_dir}/advancement/trainers"
                 os.makedirs(advancement_dir, exist_ok=True)
-                advancement_filename = os.path.join(advancement_dir, f"defeat_chickencoopleader_{safe}.json")
+                advancement_filename = os.path.join(advancement_dir, f"defeat_chickencoopleader_{safe}_{badge_level}.json")
                 with open(advancement_filename, "w", encoding="utf-8") as af:
                     json.dump(advancement_obj, af, indent=2, ensure_ascii=False)
+
+            # Also update mob trainer group template if present
+            if mobs_template_obj is not None:
+                required_defeats = [f"chickencoopleader_{known_leader_name}_{badge_level-1}" for known_leader_name in leader_names if badge_level >= 1 and known_leader_name != leader_name]
+                group_map["REQUIRED_DEFEATS"] = [required_defeats] if required_defeats else []
+                mobs_obj = _render_node(mobs_template_obj, group_map)
+                mob_filename = os.path.join(mobs_dir, f"chickencoopleader_{safe}_{badge_level}.json")
+                with open(mob_filename, "w", encoding="utf-8") as mf:
+                    json.dump(mobs_obj, mf, indent=2, ensure_ascii=False)
+
             created += 1
 
-        print(f"Successfully created {created} JSON files in the '{trainers_dir}' directory.")
+        # print(f"Successfully created {created} JSON files in the '{trainers_dir}' directory.")
         return
 
 
@@ -285,6 +309,10 @@ if __name__ == "__main__":
     parser.add_argument("--trainer-type-template", "-t", default="templates/trainer_type_template.json", help="Trainer type template JSON path")
 
     args = parser.parse_args()
+
+    # remove the output directory if it exists
+    if os.path.isdir(args.outdir):
+        shutil.rmtree(args.outdir)
 
     # Load optional command/settings config json
     settings_json = None
@@ -302,23 +330,45 @@ if __name__ == "__main__":
     output_dir = f"{args.outdir}/data/rctmod"
 
     if args.sheet == "all":
+        leader_names = []
         for sheet in DEFAULT_SHEETS:
-            print(f"Processing sheet: {sheet}")
+            # get all the leader names from the excel sheets and save them in a list
+            # Load the Excel file into a pandas DataFrame
+            print(f"Reading leader names from sheet: {sheet}", end="\r")
+            df = pd.read_excel(args.excel_file, sheet_name=sheet)
+            if "Leader Name" in df.columns:
+                leader_names.append(df["Leader Name"].dropna().unique().tolist()[0].lower().strip())
+
+        print(f"Found leader names: {leader_names}")
+
+        for sheet in DEFAULT_SHEETS:
+            print(f"Processing sheet: {sheet}", end="\r")
             main(
                 args.excel_file,
                 sheet_name=sheet,
                 output_dir=output_dir,
                 leader_template_path=args.leader_template,
                 pokemon_template_path=args.pokemon_template,
+                leader_names=leader_names,
 
             )
     else:
+        leader_names = []
+        # get all the leader names from the excel sheets and save them in a list
+        # Load the Excel file into a pandas DataFrame
+        df = pd.read_excel(args.excel_file, sheet_name=args.sheet)
+        if "Leader Name" in df.columns:
+            leader_names.append(df["Leader Name"].dropna().unique().tolist()[0].lower().strip())
+
+        print(f"Found leader names: {leader_names}")
+
         main(
             args.excel_file,
             sheet_name=args.sheet,
             output_dir=output_dir,
             leader_template_path=args.leader_template,
             pokemon_template_path=args.pokemon_template,
+            leader_names=leader_names,
         )
 
     # move pack.mcmeta file in templates to output dir
@@ -328,17 +378,15 @@ if __name__ == "__main__":
     pack_mcmeta_src = "templates/pack.mcmeta"
     pack_mcmeta_dst = os.path.join(pack_dir, "pack.mcmeta")
     if os.path.isfile(pack_mcmeta_src):
-        import shutil
         shutil.copyfile(pack_mcmeta_src, pack_mcmeta_dst)
-        print(f"Successfully copied pack.mcmeta file to the '{pack_dir}' directory.")
+        print(f"Successfully copied pack.mcmeta file to the '{pack_dir}' directory.", end="\r")
 
     # move pack.png file in templates to output dir
     pack_image_src = "templates/pack.png"
     pack_image_dst = os.path.join(pack_dir, "pack.png")
     if os.path.isfile(pack_image_src):
-        import shutil
         shutil.copyfile(pack_image_src, pack_image_dst)
-        print(f"Successfully copied pack.png file to the '{pack_dir}' directory.")
+        print(f"Successfully copied pack.png file to the '{pack_dir}' directory.", end="\r")
 
     # Trainer types JSON creation
     trainer_types_dir = f"{output_dir}/trainer_types"
@@ -355,24 +403,7 @@ if __name__ == "__main__":
         with open(trainer_types_filename, "w", encoding="utf-8") as tf:
             json.dump(trainer_type_template_obj, tf, indent=2, ensure_ascii=False)
 
-        print(f"Successfully created trainer types JSON file in the '{trainer_types_dir}' directory.")
-
-    # Mob trainer group JSON creation
-    mobs_dir = f"{output_dir}/mobs/trainers/groups"
-    os.makedirs(mobs_dir, exist_ok=True)
-
-    mobs_template_obj = None
-    if os.path.isfile(args.mobs_template):
-        with open(args.mobs_template, "r", encoding="utf-8") as mf:
-            mobs_template_obj = json.load(mf)
-
-    if mobs_template_obj is not None:
-        # Also create mob trainer group JSON
-        mob_filename = os.path.join(mobs_dir, f"chickencoopleader.json")
-        with open(mob_filename, "w", encoding="utf-8") as mf:
-            json.dump(mobs_template_obj, mf, indent=2, ensure_ascii=False)
-
-        print(f"Successfully created mob trainer group JSON file in the '{mobs_dir}' directory.")
+        print(f"Successfully created trainer types JSON file in the '{trainer_types_dir}' directory.", end="\r")
 
     # Loot table JSON creation
     loot_tables_dir = f"{output_dir}/loot_tables/mobs/trainers"
@@ -389,7 +420,7 @@ if __name__ == "__main__":
         with open(loot_table_filename, "w", encoding="utf-8") as lf:
             json.dump(loot_table_template_obj, lf, indent=2, ensure_ascii=False)
 
-        print(f"Successfully created loot table JSON file in the '{loot_tables_dir}' directory.")
+        print(f"Successfully created loot table JSON file in the '{loot_tables_dir}' directory.", end="\r")
 
     # Series JSON creation
     series_dir = f"{output_dir}/series"
@@ -402,13 +433,16 @@ if __name__ == "__main__":
 
     if series_template_obj is not None:
         # Also create series JSON
-        series_filename = os.path.join(series_dir, f"chickencoopggymchallenge.json")
+        series_filename = os.path.join(series_dir, f"chickencoopgymchallenge.json")
         with open(series_filename, "w", encoding="utf-8") as sf:
             json.dump(series_template_obj, sf, indent=2, ensure_ascii=False)
 
-        print(f"Successfully created series JSON file in the '{series_dir}' directory.")
+        print(f"Successfully created series JSON file in the '{series_dir}' directory.", end="\r")
 
     # zip the output dir
     shutil.make_archive(args.outdir, 'zip', args.outdir)
     print(f"Successfully created zip archive '{args.outdir}.zip'.")
 
+    # remove the output dir after zipping
+    shutil.rmtree(args.outdir)
+    print(f"Successfully removed temporary output directory '{args.outdir}'.", end="\r")
