@@ -1,0 +1,30 @@
+{
+  "display": {
+    "title": {
+      "text": "Basic Badge"
+    },
+    "description": {
+      "text": "Defeat Leader {{LEADER_DISPLAY_NAME}}"
+    },
+    "icon": {
+      "id": "cobblemonpokemonbadges:basic_badge"
+    },
+    "announce_to_chat": true,
+    "show_toast": true,
+    "hidden": false,
+    "frame": "goal"
+  },
+  "criteria": {
+    "first_defeat": {
+      "conditions": {
+        "trainer_ids": ["chickencoopleader_{{LEADER_NAME}}"]
+      },
+      "trigger": "rctmod:defeat_count"
+    }
+  },
+  "requirements": [
+    [
+      "first_defeat"
+    ]
+  ]
+}

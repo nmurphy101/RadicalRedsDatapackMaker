@@ -1,0 +1,9 @@
+{
+    "excel_file": "trainers.xlsx",
+    "sheet": "all",
+    "outdir": "MoreGymLeaders",
+    "leader-template": "templates/gym_leader_template.json",
+    "pokemon-template": "templates/pokemon_template.json",
+    "mobs-template": "templates/mob_trainer_group_template.json",
+    "trainer-type-template": "templates/trainer_type_template.json"
+}

@@ -68,8 +68,6 @@ def _render_node(node: Any, row: pd.Series, pokemon_list: list | None = None):
     if not isinstance(node, str):
         return node
 
-    # Find placeholders in the string
-    placeholders = re.findall(r"\{\{([A-Za-z0-9_]+)\}\}", node)
     # If the string is exactly a single placeholder, return the appropriate typed value
     m = re.fullmatch(r"\{\{([A-Za-z0-9_]+)\}\}", node)
     if m:
@@ -95,74 +93,6 @@ def _render_node(node: Any, row: pd.Series, pokemon_list: list | None = None):
     return rendered
 
 
-def _build_pokemon_list(row: pd.Series, pokemon_template_obj: Any):
-    """Detect POKEMON_N_* columns, build list of pokemon dicts using the pokemon template object."""
-    # Find all columns in the row that match POKEMON_<index>_<FIELD>
-    indices = set()
-    for col in row.index:
-        m = re.match(r"^POKEMON_(\d+)_", str(col))
-        if m:
-            indices.add(int(m.group(1)))
-    if not indices:
-        # Maybe there"s a single column "POKEMON_TEAM" with JSON or semicolon list
-        team_cell = row.get("POKEMON_TEAM")
-        if team_cell is None:
-            return []
-        parsed = _parse_cell_value(team_cell)
-        if isinstance(parsed, list):
-            # If items are dict-like strings, try to parse them
-            out = []
-            for item in parsed:
-                if isinstance(item, str):
-                    try:
-                        out.append(json.loads(item))
-                        continue
-                    except Exception:
-                        pass
-                out.append(item)
-            return out
-        return [parsed]
-
-    pokemon_list = []
-    for i in sorted(indices):
-        # For each pokemon, render the template using columns like POKEMON_{i}_FIELD
-        def _get_val_for_placeholder(placeholder_name: str):
-            # placeholder_name like POKEMON_NAME or POKEMON_LEVEL
-            if placeholder_name.startswith("POKEMON_"):
-                suffix = placeholder_name[len("POKEMON_"):]
-                colname = f"POKEMON_{i}_{suffix}"
-                if colname in row.index:
-                    return _parse_cell_value(row.get(colname))
-            # fallback to column without index
-            if placeholder_name in row.index:
-                return _parse_cell_value(row.get(placeholder_name))
-            return ""
-
-        # Render a copy of the pokemon template object, replacing placeholders exactly
-        def _render_pokemon_node(node):
-            if isinstance(node, dict):
-                return {k: _render_pokemon_node(v) for k, v in node.items()}
-            if isinstance(node, list):
-                return [_render_pokemon_node(v) for v in node]
-            if not isinstance(node, str):
-                return node
-            m = re.fullmatch(r"\{\{([A-Za-z0-9_]+)\}\}", node)
-            if m:
-                key = m.group(1)
-                return _get_val_for_placeholder(key)
-            # replace any placeholders inside the string
-            def repl(match):
-                k = match.group(1)
-                v = _get_val_for_placeholder(k)
-                return "" if v is None else str(v)
-            return re.sub(r"\{\{([A-Za-z0-9_]+)\}\}", repl, node)
-
-        rendered = _render_pokemon_node(pokemon_template_obj)
-        pokemon_list.append(rendered)
-
-    return pokemon_list
-
-
 def _pokemon_from_row(row: pd.Series, pokemon_template_obj: Any):
     """Build a single pokemon dict from a row using the pokemon template and expected column names.
 
@@ -184,20 +114,25 @@ def _pokemon_from_row(row: pd.Series, pokemon_template_obj: Any):
         return v
 
     mapping = {}
-    mapping["POKEMON_NAME"] = cell("Pokemon").lower() or ""
+    # Sanitize move name to have no spaces at all and all lowercase and no special characters
+    mapping["POKEMON_NAME"] = re.sub(r"\s+", "", cell("Pokemon") or "").lower()
+    mapping["POKEMON_NAME"] = re.sub(r"[^a-z0-9_]", "", mapping["POKEMON_NAME"])
+
     mapping["POKEMON_LEVEL"] = _parse_cell_value(cell("Level") or cell("level") or "")
 
     # Aspect is a list of comma separated values
     aspect_cell = cell("Aspect")
     if type(aspect_cell) in (str, int, float) and aspect_cell != "" and not (isinstance(aspect_cell, float) and math.isnan(aspect_cell)):
-        # ensure string, split by comma and ignore empty items
+        # ensure list, split by comma and ignore empty items
         mapping["POKEMON_ASPECT_LIST"] = [x.strip() for x in str(aspect_cell).split(",") if x.strip() != ""]
+    else:
+        mapping["POKEMON_ASPECT_LIST"] = []
 
     # moveset from Slot 1..Slot 4
     moves = []
     for i in range(0, 5):
         move = cell(f"Slot {i}")
-        if move is not None and move is not False and str(move).strip() != "":
+        if move is not None and move is not False and str(move).strip() != "" and not (isinstance(move, float) and math.isnan(move)):
             # Sanitize move name to have no spaces at all and all lowercase and no special characters
             move = re.sub(r"\s+", "", str(move).strip()).lower()
             move = re.sub(r"[^a-z0-9_]", "", move)
@@ -248,7 +183,6 @@ def main(
         output_dir="output_jsons",
         leader_template_path="templates/gym_leader_template.json",
         pokemon_template_path="templates/pokemon_template.json",
-        mobs_template_path="templates/mob_trainer_group_template.json",
 ):
     # Validate input file
     if not os.path.isfile(excel_file):
@@ -256,11 +190,8 @@ def main(
         sys.exit(1)
 
     trainers_dir = f"{output_dir}/trainers"
-    mobs_dir = f"{output_dir}/mobs/trainers/groups"
-
     # Ensure an output directory exists
     os.makedirs(trainers_dir, exist_ok=True)
-    os.makedirs(mobs_dir, exist_ok=True)
 
     # Load templates
     if not os.path.isfile(leader_template_path):
@@ -274,10 +205,11 @@ def main(
         with open(pokemon_template_path, "r", encoding="utf-8") as pf:
             pokemon_template_obj = json.load(pf)
 
-    mobs_template_obj = None
-    if os.path.isfile(mobs_template_path):
-        with open(mobs_template_path, "r", encoding="utf-8") as mf:
-            mobs_template_obj = json.load(mf)
+    advancement_template_obj = None
+    advancement_template_filename = "templates/advancement_trainer_template.json"
+    if os.path.isfile(advancement_template_filename):
+        with open(advancement_template_filename, "r", encoding="utf-8") as af:
+            advancement_template_obj = json.load(af)
 
     # Load the Excel file into a pandas DataFrame
     df = pd.read_excel(excel_file, sheet_name=sheet_name)
@@ -299,8 +231,8 @@ def main(
             # Use the first row as representative for gym-level fields
             first = group.iloc[0]
             group_map = dict(first.to_dict())
-            leader_name = first.get('Leader Name') or first.get('Leader', '')
-            group_map['LEADER_NAME'] = f"{leader_name}_{badge_level}"
+            leader_name = (first.get('Leader Name') or first.get('Leader', '')).lower().strip()
+            group_map['LEADER_NAME'] = f"{leader_name[0].upper()}{leader_name[1:]}" if leader_name else f"leader_{badge_level}"
 
             # filename: prefer provided LEADER_NAME
             base_name = group_map.get("LEADER_NAME")
@@ -324,17 +256,19 @@ def main(
                     pokemon_list.append(p)
 
             rendered_obj = _render_node(gym_template_obj, group_map, pokemon_list)
-            filename = os.path.join(trainers_dir, f"{safe}.json")
+            filename = os.path.join(trainers_dir, f"chickencoopleader_{safe}.json")
             with open(filename, "w", encoding="utf-8") as f:
                 json.dump(rendered_obj, f, indent=2, ensure_ascii=False)
-            created += 1
 
-            if mobs_template_obj is not None:
-                # Also create mob trainer group JSON
-                mob_rendered = _render_node(mobs_template_obj, group_map, pokemon_list)
-                mob_filename = os.path.join(mobs_dir, f"chickencoopleader_{safe}.json")
-                with open(mob_filename, "w", encoding="utf-8") as mf:
-                    json.dump(mob_rendered, mf, indent=2, ensure_ascii=False)
+            # Also create advancement JSON if template provided
+            if advancement_template_obj is not None:
+                advancement_obj = _render_node(advancement_template_obj, group_map)
+                advancement_dir = f"{output_dir}/advancement/trainers"
+                os.makedirs(advancement_dir, exist_ok=True)
+                advancement_filename = os.path.join(advancement_dir, f"defeat_chickencoopleader_{safe}.json")
+                with open(advancement_filename, "w", encoding="utf-8") as af:
+                    json.dump(advancement_obj, af, indent=2, ensure_ascii=False)
+            created += 1
 
         print(f"Successfully created {created} JSON files in the '{trainers_dir}' directory.")
         return
@@ -344,7 +278,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Convert Excel rows to individual JSON files.")
     parser.add_argument("--excel_file", "-e", default="trainers.xlsx", help="Path to the Excel file to convert")
     parser.add_argument("--sheet", "-s", default="all", help="Sheet name to read (default: all)")
-    parser.add_argument("--outdir", "-o", default="output_jsons", help="Output directory (default: output_jsons)")
+    parser.add_argument("--outdir", "-o", default="MoreGymLeaders", help="Output directory (default: MoreGymLeaders)")
     parser.add_argument("--leader-template", "-l", default="templates/gym_leader_template.json", help="Gym Leader template JSON path")
     parser.add_argument("--pokemon-template", "-p", default="templates/pokemon_template.json", help="Pokemon template JSON path")
     parser.add_argument("--mobs-template", "-m", default="templates/mob_trainer_group_template.json", help="Mob trainer group template JSON path")
@@ -352,29 +286,62 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    # Load optional command/settings config json
+    settings_json = None
+    settings_filename = "settings.json"
+    if os.path.isfile(settings_filename):
+        with open(settings_filename, "r", encoding="utf-8") as tf:
+            settings_json = json.load(tf)
+
+    if settings_json is not None:
+        # Override args with settings.json values if present
+        for key in vars(args).keys():
+            if key in settings_json:
+                setattr(args, key, settings_json[key])
+
+    output_dir = f"{args.outdir}/data/rctmod"
+
     if args.sheet == "all":
         for sheet in DEFAULT_SHEETS:
             print(f"Processing sheet: {sheet}")
             main(
                 args.excel_file,
                 sheet_name=sheet,
-                output_dir=args.outdir,
+                output_dir=output_dir,
                 leader_template_path=args.leader_template,
                 pokemon_template_path=args.pokemon_template,
-                mobs_template_path=args.mobs_template,
 
             )
     else:
         main(
             args.excel_file,
             sheet_name=args.sheet,
-            output_dir=args.outdir,
+            output_dir=output_dir,
             leader_template_path=args.leader_template,
             pokemon_template_path=args.pokemon_template,
-            mobs_template_path=args.mobs_template,
         )
 
-    trainer_types_dir = f"{args.outdir}/trainer_types"
+    # move pack.mcmeta file in templates to output dir
+    pack_dir = f"{args.outdir}"
+    os.makedirs(pack_dir, exist_ok=True)
+
+    pack_mcmeta_src = "templates/pack.mcmeta"
+    pack_mcmeta_dst = os.path.join(pack_dir, "pack.mcmeta")
+    if os.path.isfile(pack_mcmeta_src):
+        import shutil
+        shutil.copyfile(pack_mcmeta_src, pack_mcmeta_dst)
+        print(f"Successfully copied pack.mcmeta file to the '{pack_dir}' directory.")
+
+    # move pack.png file in templates to output dir
+    pack_image_src = "templates/pack.png"
+    pack_image_dst = os.path.join(pack_dir, "pack.png")
+    if os.path.isfile(pack_image_src):
+        import shutil
+        shutil.copyfile(pack_image_src, pack_image_dst)
+        print(f"Successfully copied pack.png file to the '{pack_dir}' directory.")
+
+    # Trainer types JSON creation
+    trainer_types_dir = f"{output_dir}/trainer_types"
     os.makedirs(trainer_types_dir, exist_ok=True)
 
     trainer_type_template_obj = None
@@ -388,4 +355,60 @@ if __name__ == "__main__":
         with open(trainer_types_filename, "w", encoding="utf-8") as tf:
             json.dump(trainer_type_template_obj, tf, indent=2, ensure_ascii=False)
 
-    print(f"Successfully created trainer types JSON file in the '{trainer_types_dir}' directory.")
+        print(f"Successfully created trainer types JSON file in the '{trainer_types_dir}' directory.")
+
+    # Mob trainer group JSON creation
+    mobs_dir = f"{output_dir}/mobs/trainers/groups"
+    os.makedirs(mobs_dir, exist_ok=True)
+
+    mobs_template_obj = None
+    if os.path.isfile(args.mobs_template):
+        with open(args.mobs_template, "r", encoding="utf-8") as mf:
+            mobs_template_obj = json.load(mf)
+
+    if mobs_template_obj is not None:
+        # Also create mob trainer group JSON
+        mob_filename = os.path.join(mobs_dir, f"chickencoopleader.json")
+        with open(mob_filename, "w", encoding="utf-8") as mf:
+            json.dump(mobs_template_obj, mf, indent=2, ensure_ascii=False)
+
+        print(f"Successfully created mob trainer group JSON file in the '{mobs_dir}' directory.")
+
+    # Loot table JSON creation
+    loot_tables_dir = f"{output_dir}/loot_tables/mobs/trainers"
+    os.makedirs(loot_tables_dir, exist_ok=True)
+    loot_table_template_filename = "templates/loot_table_template.json"
+    loot_table_template_obj = None
+    if os.path.isfile(loot_table_template_filename):
+        with open(loot_table_template_filename, "r", encoding="utf-8") as lf:
+            loot_table_template_obj = json.load(lf)
+
+    if loot_table_template_obj is not None:
+        # Also create loot table JSON
+        loot_table_filename = os.path.join(loot_tables_dir, f"chickencoopleader.json")
+        with open(loot_table_filename, "w", encoding="utf-8") as lf:
+            json.dump(loot_table_template_obj, lf, indent=2, ensure_ascii=False)
+
+        print(f"Successfully created loot table JSON file in the '{loot_tables_dir}' directory.")
+
+    # Series JSON creation
+    series_dir = f"{output_dir}/series"
+    os.makedirs(series_dir, exist_ok=True)
+    series_template_filename = "templates/series_template.json"
+    series_template_obj = None
+    if os.path.isfile(series_template_filename):
+        with open(series_template_filename, "r", encoding="utf-8") as sf:
+            series_template_obj = json.load(sf)
+
+    if series_template_obj is not None:
+        # Also create series JSON
+        series_filename = os.path.join(series_dir, f"chickencoopggymchallenge.json")
+        with open(series_filename, "w", encoding="utf-8") as sf:
+            json.dump(series_template_obj, sf, indent=2, ensure_ascii=False)
+
+        print(f"Successfully created series JSON file in the '{series_dir}' directory.")
+
+    # zip the output dir
+    shutil.make_archive(args.outdir, 'zip', args.outdir)
+    print(f"Successfully created zip archive '{args.outdir}.zip'.")
+

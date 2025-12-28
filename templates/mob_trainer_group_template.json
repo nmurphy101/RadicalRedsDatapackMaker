@@ -5,7 +5,7 @@
     ],
     "type": "gymleader_chickencoop",
     "maxTrainerWins": -1,
-    "spawnWeightFactor": 0.0000000001,
+    "spawnWeightFactor": 0,
     "biomeTagBlacklist": [],
-    "biomeTagWhitelist": ["is_the_void"]
+    "biomeTagWhitelist": ["is_void"]
 }
