@@ -10,6 +10,6 @@ pip install -r requirements.txt
 
 run the script:
 ```
-python main Gym_Leaders.xlsx
+python RRDPM.py
 ```
 

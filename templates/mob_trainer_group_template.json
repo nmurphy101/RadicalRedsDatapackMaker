@@ -7,5 +7,6 @@
     "maxTrainerWins": -1,
     "spawnWeightFactor": 0,
     "biomeTagBlacklist": [],
-    "biomeTagWhitelist": ["is_void"]
+    "biomeTagWhitelist": ["is_void"],
+    "delete_output_dir": false
 }

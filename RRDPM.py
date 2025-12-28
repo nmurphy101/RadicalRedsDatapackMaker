@@ -12,7 +12,8 @@ from typing import Any
 # Default sheets (pokemon types). Used when `--sheet all` is passed.
 DEFAULT_SHEETS = [
     'Normal', 'Fire', 'Water', 'Grass', 'Electric', 'Ice', 'Fighting', 'Poison', 'Ground',
-    'Flying', 'Psychic', 'Bug', 'Rock', 'Ghost', 'Dragon', 'Dark', 'Steel', 'Fairy'
+    'Flying', 'Psychic', 'Bug', 'Rock', 'Ghost', 'Dragon', 'Dark', 'Steel', 'Fairy',
+    "E1A", "E1B", "E2A", "E2B", "E3A", "E3B", "E4A", "E4B", "C1", "C2", "C3", "C4",
 ]
 
 def _parse_cell_value(val: Any):
@@ -185,6 +186,7 @@ def main(
         leader_template_path="templates/gym_leader_template.json",
         pokemon_template_path="templates/pokemon_template.json",
         leader_names=[],
+        elite_4_names=[],
 ):
     # Validate input file
     if not os.path.isfile(excel_file):
@@ -224,8 +226,6 @@ def main(
         with open(args.mobs_template, "r", encoding="utf-8") as mf:
             mobs_template_obj = json.load(mf)
 
-        # print(f"Successfully created mob trainer group JSON file in the '{mobs_dir}' directory.", end="\r")
-
     # Load the Excel file into a pandas DataFrame
     df = pd.read_excel(excel_file, sheet_name=sheet_name)
 
@@ -243,6 +243,8 @@ def main(
         grouped = df.groupby("Badge Level")
         created = 0
         for badge_level, group in grouped:
+            if "Badge Level" == badge_level: continue  # skip header row if present
+            badge_level = int(badge_level)
             # Use the first row as representative for gym-level fields
             first = group.iloc[0]
             group_map = dict(first.to_dict())
@@ -283,9 +285,15 @@ def main(
                 with open(advancement_filename, "w", encoding="utf-8") as af:
                     json.dump(advancement_obj, af, indent=2, ensure_ascii=False)
 
-            # Also update mob trainer group template if present
+            # Also update mob trainer group template if present elite_4_names
             if mobs_template_obj is not None:
-                required_defeats = [f"chickencoopleader_{known_leader_name}_{badge_level-1}" for known_leader_name in leader_names if badge_level >= 1 and known_leader_name != leader_name]
+                required_defeats = []
+                if badge_level == 9:
+                    required_defeats = [f"chickencoopleader_{known_leader_name}_{badge_level-1}" for index, known_leader_name in enumerate(elite_4_names) if known_leader_name != leader_name and index < 8]
+                elif badge_level == 8:
+                    required_defeats = [f"chickencoopleader_{known_leader_name}_{badge_level-1}" for known_leader_name in leader_names if known_leader_name != leader_name]
+                elif badge_level >= 1:
+                    required_defeats = [f"chickencoopleader_{known_leader_name}_{badge_level-1}" for known_leader_name in leader_names if known_leader_name != leader_name]
                 group_map["REQUIRED_DEFEATS"] = [required_defeats] if required_defeats else []
                 mobs_obj = _render_node(mobs_template_obj, group_map)
                 mob_filename = os.path.join(mobs_dir, f"chickencoopleader_{safe}_{badge_level}.json")
@@ -294,7 +302,6 @@ def main(
 
             created += 1
 
-        # print(f"Successfully created {created} JSON files in the '{trainers_dir}' directory.")
         return
 
 
@@ -331,18 +338,32 @@ if __name__ == "__main__":
 
     if args.sheet == "all":
         leader_names = []
+        elite_4_names = []
         for sheet in DEFAULT_SHEETS:
             # get all the leader names from the excel sheets and save them in a list
             # Load the Excel file into a pandas DataFrame
-            print(f"Reading leader names from sheet: {sheet}", end="\r")
+            print(f"Reading leader names from sheet: {sheet}", end=f"{' ' * 30}\r")
             df = pd.read_excel(args.excel_file, sheet_name=sheet)
-            if "Leader Name" in df.columns:
-                leader_names.append(df["Leader Name"].dropna().unique().tolist()[0].lower().strip())
+            badge_level_grouped = df.groupby("Badge Level")
+            for badge_level, group in badge_level_grouped:
+                if "Badge Level" == badge_level: continue  # skip header row if present
+                badge_level = int(badge_level)
+                # Use the first row as representative for gym-level fields
+                first = group.iloc[0]
+                group_map = dict(first.to_dict())
+                leader_name = (first.get('Leader Name') or first.get('Leader', '')).lower().strip()
+                if "Leader Name" in leader_name:
+                    continue
+                if badge_level >= 8 and leader_name not in elite_4_names:
+                    # sanitize including replacing spaces with underscores
+                    elite_4_names.append(df["Leader Name"].dropna().unique().tolist()[0].lower().strip().replace(" ", "_"))
+                elif badge_level < 8 and leader_name not in leader_names:
+                    leader_names.append(df["Leader Name"].dropna().unique().tolist()[0].lower().strip().replace(" ", "_"))
 
-        print(f"Found leader names: {leader_names}")
+        print(f"Found leader names: {leader_names}\nFound elite 4 names: {elite_4_names}")
 
         for sheet in DEFAULT_SHEETS:
-            print(f"Processing sheet: {sheet}", end="\r")
+            print(f"Processing sheet: {sheet}", end=f"{' ' * 30}\r")
             main(
                 args.excel_file,
                 sheet_name=sheet,
@@ -350,6 +371,7 @@ if __name__ == "__main__":
                 leader_template_path=args.leader_template,
                 pokemon_template_path=args.pokemon_template,
                 leader_names=leader_names,
+                elite_4_names=elite_4_names,
 
             )
     else:
@@ -379,14 +401,14 @@ if __name__ == "__main__":
     pack_mcmeta_dst = os.path.join(pack_dir, "pack.mcmeta")
     if os.path.isfile(pack_mcmeta_src):
         shutil.copyfile(pack_mcmeta_src, pack_mcmeta_dst)
-        print(f"Successfully copied pack.mcmeta file to the '{pack_dir}' directory.", end="\r")
+        print(f"Successfully copied pack.mcmeta file to the '{pack_dir}' directory.", end=f"{' ' * 30}\r")
 
     # move pack.png file in templates to output dir
     pack_image_src = "templates/pack.png"
     pack_image_dst = os.path.join(pack_dir, "pack.png")
     if os.path.isfile(pack_image_src):
         shutil.copyfile(pack_image_src, pack_image_dst)
-        print(f"Successfully copied pack.png file to the '{pack_dir}' directory.", end="\r")
+        print(f"Successfully copied pack.png file to the '{pack_dir}' directory.", end=f"{' ' * 30}\r")
 
     # Trainer types JSON creation
     trainer_types_dir = f"{output_dir}/trainer_types"
@@ -403,7 +425,7 @@ if __name__ == "__main__":
         with open(trainer_types_filename, "w", encoding="utf-8") as tf:
             json.dump(trainer_type_template_obj, tf, indent=2, ensure_ascii=False)
 
-        print(f"Successfully created trainer types JSON file in the '{trainer_types_dir}' directory.", end="\r")
+        print(f"Successfully created trainer types JSON file in the '{trainer_types_dir}' directory.", end=f"{' ' * 30}\r")
 
     # Loot table JSON creation
     loot_tables_dir = f"{output_dir}/loot_tables/mobs/trainers"
@@ -420,7 +442,7 @@ if __name__ == "__main__":
         with open(loot_table_filename, "w", encoding="utf-8") as lf:
             json.dump(loot_table_template_obj, lf, indent=2, ensure_ascii=False)
 
-        print(f"Successfully created loot table JSON file in the '{loot_tables_dir}' directory.", end="\r")
+        print(f"Successfully created loot table JSON file in the '{loot_tables_dir}' directory.", end=f"{' ' * 30}\r")
 
     # Series JSON creation
     series_dir = f"{output_dir}/series"
@@ -437,12 +459,13 @@ if __name__ == "__main__":
         with open(series_filename, "w", encoding="utf-8") as sf:
             json.dump(series_template_obj, sf, indent=2, ensure_ascii=False)
 
-        print(f"Successfully created series JSON file in the '{series_dir}' directory.", end="\r")
+        print(f"Successfully created series JSON file in the '{series_dir}' directory.", end=f"{' ' * 30}\r")
 
     # zip the output dir
     shutil.make_archive(args.outdir, 'zip', args.outdir)
     print(f"Successfully created zip archive '{args.outdir}.zip'.")
 
-    # remove the output dir after zipping
-    shutil.rmtree(args.outdir)
-    print(f"Successfully removed temporary output directory '{args.outdir}'.", end="\r")
+    # remove the output dir after zipping if settings.json says to
+    if settings_json is None or settings_json.get("delete_output_dir") is True:
+        shutil.rmtree(args.outdir)
+        print(f"Successfully removed temporary output directory '{args.outdir}'.", end=f"{' ' * 30}\r")
