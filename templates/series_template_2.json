@@ -1,6 +1,11 @@
 {
   "description": "Buckle Up Fuckers It's Time to Fight the Elite Four!",
   "difficulty": 9,
-  "requiredSeries": [["chickencoopgymchallenge"]],
+  "requiredSeries": [
+    ["chickencoopgymchallenge1"],
+    ["chickencoopgymchallenge2"],
+    ["chickencoopgymchallenge3"],
+    ["chickencoopgymchallenge4"]
+  ],
   "title": "Chickencoop Elite Four Challenge"
 }

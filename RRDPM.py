@@ -303,12 +303,16 @@ def main(
                 elif badge_level >= 1:
                     required_defeats = [f"{group_name}_{known_leader_name}_{badge_level-1}" for known_leader_name in leader_names if known_leader_name != leader_name]
 
+                # For even badge levels, no required defeats
+                if badge_level % 2 == 0:
+                    required_defeats = None
+
                 if sheet_name in ELITE_FOUR_SHEETS and badge_level == 8:
                     group_map["REQUIRED_DEFEATS"] = []
                 else:
                     group_map["REQUIRED_DEFEATS"] = [required_defeats] if required_defeats else []
 
-                group_map["SERIES"] = ["chickencoopelitefour"] if sheet_name in ELITE_FOUR_SHEETS else ["chickencoopgymchallenge"]
+                _calculate_and_set_series(sheet_name, group_map, badge_level)
                 group_map["TYPE"] = "elitefour_chickencoop" if sheet_name in ELITE_FOUR_SHEETS else "gymleader_chickencoop"
                 mobs_obj = _render_node(mobs_template_obj, group_map)
                 mob_filename = os.path.join(mobs_dir, f"{group_name}_{safe}_{badge_level}.json")
@@ -318,6 +322,42 @@ def main(
             created += 1
 
         return
+
+# Choose series
+def _calculate_and_set_series(sheet_name: str, group_map: dict, badge_level: int) -> list:
+    if sheet_name in ELITE_FOUR_SHEETS:
+        group_map["SERIES"] = ["chickencoopelitefour"]
+
+    # group pairs of badge levels into one series entry
+    else:
+        series_index = (badge_level + 2) // 2
+        group_map["SERIES"] = [f"chickencoopgymchallenge{series_index}"]
+
+def _create_series_json(template_index):
+    series_template_filename = f"templates/series_template_{template_index}.json"
+    series_template_obj = None
+    if os.path.isfile(series_template_filename):
+        with open(series_template_filename, "r", encoding="utf-8") as sf:
+            series_template_obj = json.load(sf)
+
+    if series_template_obj is not None:
+
+        if template_index == 1:
+            num_series = 4
+        else:
+            num_series = 1
+
+        for series_index in range(1, num_series + 1):
+            # Also create series JSON
+            group_map = {
+                "BADGE_LEVEL": series_index,
+            }
+            series_obj = _render_node(series_template_obj, group_map)
+            series_filename = os.path.join(series_dir, f"chickencoopgymchallenge{series_index}.json" if template_index == 1 else "chickencoopelitefour.json")
+            with open(series_filename, "w", encoding="utf-8") as sf:
+                json.dump(series_obj, sf, indent=2, ensure_ascii=False)
+
+        print(f"Successfully created series JSON files in the '{series_dir}' directory.", end=f"{' ' * 30}\r")
 
 
 if __name__ == "__main__":
@@ -470,19 +510,7 @@ if __name__ == "__main__":
     series_dir = f"{output_dir}/series"
     os.makedirs(series_dir, exist_ok=True)
     for index in range(1, 3):
-        series_template_filename = f"templates/series_template_{index}.json"
-        series_template_obj = None
-        if os.path.isfile(series_template_filename):
-            with open(series_template_filename, "r", encoding="utf-8") as sf:
-                series_template_obj = json.load(sf)
-
-        if series_template_obj is not None:
-            # Also create series JSON
-            series_filename = os.path.join(series_dir, "chickencoopgymchallenge.json" if index == 1 else "chickencoopelitefour.json")
-            with open(series_filename, "w", encoding="utf-8") as sf:
-                json.dump(series_template_obj, sf, indent=2, ensure_ascii=False)
-
-            print(f"Successfully created series JSON file in the '{series_dir}' directory.", end=f"{' ' * 30}\r")
+        _create_series_json(index)
 
     # zip the output dir
     shutil.make_archive(args.outdir, 'zip', args.outdir)

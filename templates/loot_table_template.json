@@ -5,14 +5,14 @@
       "entries": [
         {
           "type": "minecraft:item",
-          "name": "cobblemonpokemonbadges:basic_badge",
+          "name": "cobblemon:fossilized_fish",
           "conditions": [
             {
               "condition": "rctmod:defeat_count",
                 "count": 1
                   }
               ]
-            } 
+            }
           ]
         },
         {
