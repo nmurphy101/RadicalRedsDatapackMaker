@@ -4,6 +4,6 @@
   "type": "{{TYPE}}",
   "maxTrainerWins": -1,
   "spawnWeightFactor": 0,
-  "biomeTagBlacklist": [],
-  "biomeTagWhitelist": ["is_void"]
+  "biomeTagBlacklist": ["is_void", "is_overworld", "is_nether", "is_end"],
+  "biomeTagWhitelist": []
 }

@@ -298,21 +298,21 @@ def main(
                 required_defeats = []
                 if badge_level == 9:
                     required_defeats = [f"{group_name}_{known_leader_name}_{badge_level-1}" for index, known_leader_name in enumerate(elite_4_names) if known_leader_name != leader_name and index < 8]
-                elif badge_level == 8:
-                    required_defeats = [f"{group_name}_{known_leader_name}_{badge_level-1}" for known_leader_name in leader_names if known_leader_name != leader_name]
-                elif badge_level >= 1:
-                    required_defeats = [f"{group_name}_{known_leader_name}_{badge_level-1}" for known_leader_name in leader_names if known_leader_name != leader_name]
+                elif badge_level == 8 and group_map['LEADER_NAME'] == "larry":
+                    required_defeats = [f"{group_name}_{known_leader_name}_{badge_level-1}" for known_leader_name in leader_names if known_leader_name == "larry"]
+                elif badge_level >= 1 and group_map['LEADER_NAME'] == "larry":
+                    required_defeats = [f"{group_name}_{known_leader_name}_{badge_level-1}" for known_leader_name in leader_names if known_leader_name == "larry"]
 
-                # For even badge levels, no required defeats
-                if badge_level % 2 == 0:
-                    required_defeats = None
+                # # For even badge levels, no required defeats
+                # if badge_level % 2 == 0:
+                #     required_defeats = None
 
                 if sheet_name in ELITE_FOUR_SHEETS and badge_level == 8:
                     group_map["REQUIRED_DEFEATS"] = []
                 else:
                     group_map["REQUIRED_DEFEATS"] = [required_defeats] if required_defeats else []
 
-                _calculate_and_set_series(sheet_name, group_map, badge_level)
+                _calculate_and_set_series(sheet_name, group_map)
                 group_map["TYPE"] = "elitefour_chickencoop" if sheet_name in ELITE_FOUR_SHEETS else "gymleader_chickencoop"
                 mobs_obj = _render_node(mobs_template_obj, group_map)
                 mob_filename = os.path.join(mobs_dir, f"{group_name}_{safe}_{badge_level}.json")
@@ -324,14 +324,16 @@ def main(
         return
 
 # Choose series
-def _calculate_and_set_series(sheet_name: str, group_map: dict, badge_level: int) -> list:
+def _calculate_and_set_series(sheet_name: str, group_map: dict) -> list:
     if sheet_name in ELITE_FOUR_SHEETS:
         group_map["SERIES"] = ["chickencoopelitefour"]
 
-    # group pairs of badge levels into one series entry
+    # linear line of larry in one series since servers can't handle all the trainers in the series we have
     else:
-        series_index = (badge_level + 2) // 2
-        group_map["SERIES"] = [f"chickencoopgymchallenge{series_index}"]
+        if group_map['LEADER_NAME'] == "larry":
+            group_map["SERIES"] = ["chickencoopgymchallenge"]
+        else:
+            group_map["SERIES"] = []
 
 def _create_series_json(template_index):
     series_template_filename = f"templates/series_template_{template_index}.json"
@@ -341,21 +343,10 @@ def _create_series_json(template_index):
             series_template_obj = json.load(sf)
 
     if series_template_obj is not None:
-
-        if template_index == 1:
-            num_series = 4
-        else:
-            num_series = 1
-
-        for series_index in range(1, num_series + 1):
-            # Also create series JSON
-            group_map = {
-                "BADGE_LEVEL": series_index,
-            }
-            series_obj = _render_node(series_template_obj, group_map)
-            series_filename = os.path.join(series_dir, f"chickencoopgymchallenge{series_index}.json" if template_index == 1 else "chickencoopelitefour.json")
-            with open(series_filename, "w", encoding="utf-8") as sf:
-                json.dump(series_obj, sf, indent=2, ensure_ascii=False)
+        series_obj = _render_node(series_template_obj, group_map)
+        series_filename = os.path.join(series_dir, f"chickencoopgymchallenge.json" if template_index == 1 else "chickencoopelitefour.json")
+        with open(series_filename, "w", encoding="utf-8") as sf:
+            json.dump(series_obj, sf, indent=2, ensure_ascii=False)
 
         print(f"Successfully created series JSON files in the '{series_dir}' directory.", end=f"{' ' * 30}\r")
 
